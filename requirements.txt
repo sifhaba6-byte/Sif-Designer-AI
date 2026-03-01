@@ -3,3 +3,4 @@ scikit-learn
 numpy
 pyembroidery
 streamlit
+scikit-image
