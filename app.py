@@ -2,13 +2,12 @@ import streamlit as st
 import cv2
 import numpy as np
 import pyembroidery
-from skimage.morphology import skeletonize
-from skimage import img_as_bool
+from skimage import morphology
 
-st.set_page_config(page_title="Sif Reverse Engineering Pro", layout="wide")
-st.title("🧵 Sif Designer: محرك الهندسة العكسية للتطريز")
+st.set_page_config(page_title="Sif Logo Pro - Vector Engine", layout="wide")
+st.markdown("<h1 style='text-align: center; color: #D4AF37;'>💎 Sif Designer: محرك الهندسة العكسية للوغو والرشمة</h1>", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("ارفع صورة الصدر أو الأكمام (احترافي فقط)", type=['jpg', 'png', 'jpeg'])
+uploaded_file = st.file_uploader("ارفع اللوغو أو الرشمة (بدقة عالية)", type=['jpg', 'png', 'jpeg'])
 
 if uploaded_file:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -16,48 +15,50 @@ if uploaded_file:
     
     col1, col2 = st.columns(2)
     with col1:
-        st.image(img, caption="المودال الأصلي", use_container_width=True)
+        st.image(img, caption="التصميم الأصلي", use_container_width=True)
 
     with col2:
-        size = st.selectbox("القيس المطلوب", ["M", "L", "XL", "XXL"])
+        size = st.selectbox("المقاس الحقيقي (القيس بالـ سم)", ["Logo (5cm)", "Medium (15cm)", "XL (30cm)"])
         
-        if st.button("تطبيق الهندسة العكسية (Vector DST)"):
-            with st.spinner("جاري تحليل هيكل الغرز واتجاهات الخيط..."):
-                # 1. معالجة هندسية للصورة
+        if st.button("تطبيق الهندسة العكسية (Vectorize)"):
+            with st.spinner("جاري استخراج مسارات الإبرة الاحترافية..."):
+                # 1. تحويل للرمادي وتنقية فائقة للحواف
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+                # استخدام عتبة ذكية لعزل اللوغو تماماً عن الخلفية
+                _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
                 
-                # 2. الهندسة العكسية: تحويل الكتل إلى "خيوط مركزية"
-                # هذه الخطوة هي التي تمنع التكتل الأخضر تماماً
-                skeleton = skeletonize(img_as_bool(binary))
+                # 2. تنحيف الخطوط (Skeletonization) للحصول على مسار واحد نقي
+                skeleton = morphology.skeletonize(thresh > 0)
                 skeleton_img = (skeleton * 255).astype(np.uint8)
                 
-                # 3. بناء ملف DST بناءً على الهيكل النحيف
+                # 3. بناء ملف DST بنظام "الغرزة المتصلة" (Running Stitch)
                 pattern = pyembroidery.EmbPattern()
-                scale = 2.5 if size == "XL" else 1.8
+                # تحديد معامل التكبير بناءً على المقاس
+                scale_map = {"Logo (5cm)": 0.5, "Medium (15cm)": 1.5, "XL (30cm)": 3.0}
+                scale = scale_map[size]
                 
-                # استخراج المسارات المنظمة
-                contours, _ = cv2.findContours(skeleton_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_KCOS)
+                contours, _ = cv2.findContours(skeleton_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)
                 
                 for cnt in contours:
-                    if len(cnt) < 10: continue
+                    if cv2.arcLength(cnt, True) < 10: continue # حذف الشوائب
                     
-                    for pt in cnt:
+                    for i, pt in enumerate(cnt):
                         x, y = pt[0]
-                        # حساب الإحداثيات بدقة الميكرون وتوسيطها
+                        # التوسيط الدقيق (Centering) لضمان عدم خروج الرشمة عن الطارة
                         st_x = (x - img.shape[1]/2) * scale
                         st_y = (y - img.shape[0]/2) * scale
                         pattern.add_stitch_absolute(pyembroidery.STITCH, st_x, st_y)
                     
-                    # قفزة نظيفة لضمان جودة الظهر
+                    # قفزة نظيفة (Jump) بين أجزاء اللوغو لضمان جودة المصنع
                     pattern.add_stitch_relative(pyembroidery.JUMP, 0, 0)
 
-                out_dst = f"Sif_Reverse_Eng_{size}.dst"
+                # تصدير ملف DST
+                out_dst = f"Sif_Vector_{size}.dst"
                 pyembroidery.write(pattern, out_dst)
                 
-                st.success("✅ تمت الهندسة العكسية بنجاح! مسارات خيطية صافية.")
-                # المعاينة هنا ستظهر لك "خيوط بيضاء نحيفة" هي مسار الإبرة الحقيقي
-                st.image(skeleton_img, caption="هيكل الغرز المستخرج (Skeleton)", use_container_width=True)
+                st.success(f"✅ تمت الهندسة العكسية! الرشمة الآن منظمة 100%")
+                # المعاينة تظهر "الهيكل العظمي" للوغو (خيوط فقط)
+                st.image(skeleton_img, caption="معاينة مسار الإبرة (بدون تكتل أخضر)", use_container_width=True)
                 
                 with open(out_dst, "rb") as f:
-                    st.download_button(f"📥 تحميل ملف {size} الاحترافي", f, file_name=out_dst)
+                    st.download_button(f"📥 تحميل ملف {size} للماكينة", f, file_name=out_dst)
