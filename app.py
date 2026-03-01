@@ -3,10 +3,10 @@ import cv2
 import numpy as np
 import pyembroidery
 
-st.set_page_config(page_title="Sif Pro Digitizer V3", layout="wide")
-st.title("💎 محرك الاستثمار: توليد الغرز الصناعية الكثيفة")
+st.set_page_config(page_title="Sif Pro - Pure Design Only", layout="wide")
+st.title("💎 محرك Sif الاحترافي: عزل الخلفية وتوليد الرشمة")
 
-uploaded_file = st.file_uploader("ارفع الرسمة (لوغو، صدر، أو أكمام)", type=['jpg', 'png', 'jpeg'])
+uploaded_file = st.file_uploader("ارفع الرسمة (لوغو أو صدر قفطان)", type=['jpg', 'png', 'jpeg'])
 
 if uploaded_file:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -17,40 +17,51 @@ if uploaded_file:
         st.image(img, caption="الصورة الأصلية", use_container_width=True)
 
     with col2:
-        # المقاس بالسنتيمتر يضبط الماكينة 100%
-        width_cm = st.number_input("العرض المطلوب للرشمة (سم)", min_value=1.0, value=20.0)
-        # الكثافة: 3 تعني غرزة كل 0.3 ملم (طرز ثقيل ومحترف)
-        density = st.slider("ثقل الطرز (Density) - المقترح 3", 1, 8, 3)
+        width_cm = st.number_input("عرض الرشمة المطلوب (سم)", min_value=1.0, value=15.0)
+        density = st.slider("كثافة التعبئة (كلما قل الرقم زاد الثقل)", 1, 10, 3)
 
-        if st.button("توليد ملف DST استثماري (ثقيل)"):
-            with st.spinner("جاري بناء جدول الغرز (MDT) بدقة الميكرون..."):
-                # 1. تنقية الصورة وتحويلها لمساحات هندسية
+        if st.button("توليد ملف DST (الرشمة فقط)"):
+            with st.spinner("جاري عزل الخلفية وبناء الغرز..."):
+                # 1. تحويل الصورة ومعالجتها لعزل الخلفية تماماً
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                _, thresh = cv2.threshold(gray, 210, 255, cv2.THRESH_BINARY_INV)
+                # استخدام عتبة ذكية (Otsu) لعزل الخلفية البيضاء آلياً
+                _, thresh = cv2.threshold(gray, 225, 255, cv2.THRESH_BINARY_INV)
                 
+                # تنظيف الشوائب الصغيرة التي قد تحسبها الماكينة غرزاً
+                kernel = np.ones((3,3), np.uint8)
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+
                 pattern = pyembroidery.EmbPattern()
-                # الماكينة تحسب بالـ 0.1 ملم (Scale دقيق جداً)
                 scale = (width_cm * 100) / img.shape[1]
                 
-                # 2. خوارزمية المسح الذكي (Scanline Fill) 
-                # تمر على كل بكسل في الرسمة وتضع غرزة تعبئة
+                # 2. خوارزمية المسح الانتقائي (Selective Scanline)
                 h, w = thresh.shape
                 for y in range(0, h, density):
-                    line_points = np.where(thresh[y, :] > 0)[0]
-                    if len(line_points) > 0:
-                        # نضع غرزة في بداية السطر ونهاية السطر وما بينهما
-                        for i in range(0, len(line_points), density):
-                            x = line_points[i]
+                    # نحدد فقط النقاط التي تنتمي للرشمة في هذا السطر
+                    active_points = np.where(thresh[y, :] > 0)[0]
+                    
+                    if len(active_points) > 0:
+                        in_segment = False
+                        for i in range(len(active_points)):
+                            x = active_points[i]
+                            
                             st_x = (x - w/2) * scale
                             st_y = (y - h/2) * scale
                             pattern.add_stitch_absolute(pyembroidery.STITCH, st_x, st_y)
-                        # قفزة نظيفة عند نهاية كل سطر
+                            
+                            # إذا كانت المسافة بين النقطة الحالية والتالية كبيرة، نضع قفزة
+                            if i < len(active_points) - 1:
+                                if active_points[i+1] - x > density:
+                                    pattern.add_stitch_relative(pyembroidery.JUMP, 0, 0)
+                        
+                        # قفزة عند نهاية كل سطر للانتقال للسطر التالي بنظافة
                         pattern.add_stitch_relative(pyembroidery.JUMP, 0, 0)
 
-                # 3. حفظ الملف النهائي
-                out_name = f"Sif_Master_Investment.dst"
+                # 3. حفظ الملف
+                out_name = f"Sif_Pure_Design.dst"
                 pyembroidery.write(pattern, out_name)
                 
-                st.success(f"✅ النتيجة: {len(pattern.stitches)} غرزة! (هذا هو الطرز اللي يربح)")
+                st.success(f"✅ تم عزل الخلفية! الملف يحتوي على {len(pattern.stitches)} غرزة صافية.")
+                st.image(thresh, caption="المساحة التي سيتم تطريزها فقط (اللون الأبيض)", use_container_width=True)
                 with open(out_name, "rb") as f:
-                    st.download_button("📥 تحميل ملف DST الاحترافي", f, file_name=out_name)
+                    st.download_button("📥 تحميل ملف DST الصافي", f, file_name=out_name)
